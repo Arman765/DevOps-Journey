@@ -1,62 +1,114 @@
 # Docker Fundamentals — Hello World
 
-A tiny Express app used to practice basic Docker commands: build, run, logs, exec, and multi-stage builds.
+A tiny Express app used to practice Docker: build, cache behavior, run,
+logs, exec, permissions, and cleanup. Screenshots below are the actual
+terminal output captured while running each step.
 
 ## Files
 
-- `server.js` — the app. Responds with "Hello World" on `/`.
-- `package.json` — lists the one dependency (`express`).
-- `Dockerfile` — single-stage build (simple, bigger image).
-- `Dockerfile.multistage` — multi-stage build (smaller, production-style image).
+- `server.js` — the app, responds "Hello World" on `/`.
+- `package.json` — the one dependency (`express`).
+- `Dockerfile` — single-stage build, runs as a non-root user.
+- `Dockerfile.multistage` — multi-stage build (smaller image).
 
 ## Steps
 
-1. **Build the image**
-   ```bash
-   docker build -t hello-node:singlestage -f Dockerfile .
-   ```
-   Packages the app and its dependencies into an image.
+### 1. The Dockerfile
 
-2. **Run a container**
-   ```bash
-   docker run -d --name hello-node-demo -p 3000:3000 -e PORT=3000 hello-node:singlestage
-   ```
-   Starts the app in the background and maps container port 3000 to your machine's port 3000.
+```bash
+cat Dockerfile
+```
 
-3. **Test it**
-   ```bash
-   curl http://localhost:3000/
-   ```
-   Confirms the app is actually reachable and responding.
+`FROM node:20` → `WORKDIR /app` → create a non-root user (`groupadd
+developers`, `useradd armanDev`) → copy `package.json` and `npm install`
+→ copy `server.js` → `chown` the app folder to that user → `USER
+armanDev` so the container never runs as root → `EXPOSE 3000` →
+`CMD ["node", "server.js"]`.
 
-4. **Check logs**
-   ```bash
-   docker logs hello-node-demo
-   ```
-   Shows what the app has printed (startup message, each request).
+![Dockerfile](screenshots/Dockerfile_Singlestage.png)
 
-5. **Look inside the container**
-   ```bash
-   docker exec -it hello-node-demo sh
-   ```
-   Opens a shell inside the running container so you can poke around.
+### 2. Build with `--no-cache`
 
-6. **Build the multi-stage version**
-   ```bash
-   docker build -t hello-node:multistage -f Dockerfile.multistage .
-   ```
-   Builds the same app using a smaller final image (no build tools left inside).
+```bash
+docker build --no-cache -t helloworldapp:$(date +%Y-%m-%d-%H-%M-%S) -f Dockerfile .
+```
 
-7. **Compare image sizes**
-   ```bash
-   docker images hello-node
-   ```
-   Shows how much smaller the multi-stage image is.
+Only `WORKDIR /app` shows `CACHED` — it has no real inputs (no file
+copy, no command output), so Docker treats it as free and reuses it
+even with `--no-cache`. Every other step (`groupadd`/`useradd`, `COPY`,
+`npm install`, `chown`) rebuilds from scratch.
 
-8. **Clean up**
-   ```bash
-   docker stop hello-node-demo
-   docker rm hello-node-demo
-   docker rmi hello-node:singlestage hello-node:multistage
-   ```
-   Stops and removes the container, then deletes both images.
+![Build with --no-cache](screenshots/Dynamic_tag_no_cached.png)
+
+### 3. Build again, cache on
+
+Instructions like RUN, COPY, and ADD execute shell commands or read files from your host machine. Because their outputs can change, --no-cache forces Docker to re-run them from scratch.
+
+WORKDIR /app, however, is purely a configuration / metadata instruction (similar to EXPOSE or ENV). It simply sets internal pointer attributes in the container configuration. Because setting a working directory path has no external dependencies, BuildKit resolves its metadata evaluation instantly without creating new layer diffs.
+
+```bash
+docker build -t helloworldapp:$(date +%Y-%m-%d-%H-%M-%S) -f Dockerfile .
+```
+
+Same Dockerfile, no `--no-cache` this time, nothing changed on disk →
+every layer shows `CACHED`, build finishes in ~1.7s instead of ~17s.
+
+![Build with cache](screenshots/Dynamic_tag_cached.png)
+
+### 4. Run, list, check logs
+
+```bash
+docker run -d -e PORT=3000 -p3000:3000 --name helloworldcontainer helloworldapp:<tag>
+docker ps -a
+docker logs <container_id>
+```
+
+Starts the container in the background, maps port 3000, and confirms
+the app logged its startup message.
+
+![Run, ps, logs](screenshots/Docker_commands1.png)
+
+### 5. Exec in and check file ownership
+
+```bash
+docker exec -it <container_id> /bin/bash
+ls -a
+ls -l
+```
+
+Inside the container: files under `/app` are owned by `armanDev` (not
+`root`) — proof the `chown` + `USER armanDev` lines in the Dockerfile
+actually took effect.
+
+![Exec and permissions](screenshots/Docker_commands2.png)
+
+### 6. Test the app and inspect further
+
+```bash
+curl -s http://localhost:3000/
+curl -s http://localhost:3000/hello
+docker logs <container_id>
+docker exec helloworldcontainer bash -c "whoami; node -v; ls -la /app"
+```
+
+`/` returns "Hello World"; an undefined route (`/hello`) correctly
+404s, proving Express routing (not a static response). `whoami` confirms
+the running process is `armanDev`, not `root`.
+
+![curl, logs, whoami/node -v](screenshots/Exec_container_file_system_permission.png)
+
+### 7. Clean up
+
+```bash
+docker ps -l
+docker images
+docker stop <container_id>
+docker rm <container_id>
+docker rmi <image_id>
+```
+
+Stops and removes the container, then removes the built images. Note:
+`docker rmi` needs a valid image reference — a trailing comma or an
+already-removed tag throws "invalid reference format" / "No such image".
+
+![Cleanup](screenshots/Container_with_logs_status.png)
