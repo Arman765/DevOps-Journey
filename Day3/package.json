@@ -1,0 +1,12 @@
+{
+  "name": "docker-hello-world",
+  "version": "1.0.0",
+  "description": "Minimal Node.js HTTP server for Docker fundamentals hands-on task",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
