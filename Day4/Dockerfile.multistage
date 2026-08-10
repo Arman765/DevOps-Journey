@@ -1,0 +1,32 @@
+# Stage 1: Build / Dependency Installation
+FROM node:20 AS builder
+
+WORKDIR /app
+
+# Copy package files first to leverage Docker layer caching
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm install --omit=dev
+
+# Stage 2: Production Runtime
+FROM node:20-slim
+
+WORKDIR /app
+
+# 1. Create custom non-root group and user
+RUN groupadd -r developers && useradd -r -g developers armanDev
+
+# 2. Copy production dependencies from builder stage with correct ownership
+COPY --from=builder /app/node_modules ./node_modules
+
+# 3. Read/Write/Execute for server.js
+COPY --chmod=777 --chown=armanDev:developers server.js ./
+COPY --chmod=664 --chown=armanDev:developers package.json ./
+
+# 4. Switch to unprivileged user
+USER armanDev
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
