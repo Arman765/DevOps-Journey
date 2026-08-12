@@ -1,0 +1,17 @@
+{
+  "name": "docker-hello-world",
+  "version": "1.0.0",
+  "description": "Minimal Node.js HTTP server for Docker fundamentals hands-on task",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "lint": "eslint .",
+    "test": "node --test ./test/server.test.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1"
+  }
+}

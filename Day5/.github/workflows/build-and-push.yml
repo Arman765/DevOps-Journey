@@ -1,0 +1,97 @@
+# Full local CI/CD: lint → test → build → push → deploy
+# Run with: act push
+name: CI/CD
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+env:
+  IMAGE_NAME: docker-hw-project
+  REGISTRY: localhost:5000
+  CONTAINER_NAME: docker-hw-project
+  APP_PORT: "3000"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint
+        run: npm run lint
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Test
+        run: npm test
+
+  build-and-push:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: |
+          docker build \
+            -t "${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}" \
+            -t "${REGISTRY}/${IMAGE_NAME}:latest" \
+            -f Dockerfile \
+            .
+
+      - name: Push image to local registry
+        run: |
+          docker push "${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}"
+          docker push "${REGISTRY}/${IMAGE_NAME}:latest"
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy from local registry
+        run: |
+          docker pull "${REGISTRY}/${IMAGE_NAME}:latest"
+          docker rm -f "${CONTAINER_NAME}" || true
+          docker run -d \
+            --name "${CONTAINER_NAME}" \
+            -e "PORT=${APP_PORT}" \
+            -p "${APP_PORT}:${APP_PORT}" \
+            "${REGISTRY}/${IMAGE_NAME}:latest"
+
+      - name: Smoke check
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -sf "http://127.0.0.1:${APP_PORT}/"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "App did not become ready on port ${APP_PORT}"
+          docker logs "${CONTAINER_NAME}" || true
+          exit 1

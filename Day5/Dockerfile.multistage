@@ -1,0 +1,23 @@
+# Multi-stage build
+#
+# Stage 1 ("builder"): has npm and any build tools available, does the
+# install/build work. This stage's layers are never shipped.
+FROM node:20 AS backend-builder
+
+WORKDIR /app
+
+COPY package.json .
+RUN npm install --omit=dev
+
+COPY server.js .
+
+# Stage 2 (final image): start completely fresh from a minimal base and
+# copy across ONLY the files actually needed to run the app.
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY --from=backend-builder /app .
+
+EXPOSE 3000
+CMD ["node", "server.js"]
