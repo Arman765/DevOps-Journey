@@ -4,7 +4,7 @@ const app = express();
 
 app.get('/', (_req, res) => {
     console.log(`${new Date().toISOString()} GET /`);
-    res.type('text/plain').send('Hello World\n');
+    res.type('text/plain').send('Hello World Docker Team is currently working\n');
 });
 
 if (require.main === module) {
