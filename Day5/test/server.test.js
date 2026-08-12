@@ -26,7 +26,7 @@ test('GET / returns Hello World', async (t) => {
     const { status, body } = await get('/', port);
 
     assert.equal(status, 200);
-    assert.equal(body, 'Hello World\n');
+    assert.equal(body, 'Hello World Docker Team is currently working\n');
 });
 
 test('GET /unknown returns 404', async (t) => {
